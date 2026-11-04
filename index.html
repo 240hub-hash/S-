@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบปรับแต่งและประมวลผลไฟล์เสียง (Audio Processor)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Font - Kanit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            appBg: '#090D16',
+            cardBg: '#111726',
+            cardBorder: '#1F293D',
+            accentCyan: '#00E5FF',
+            accentPurple: '#6366F1',
+            accentPurpleHover: '#4F46E5',
+            inputBg: '#182032',
+          },
+          fontFamily: {
+            sans: ['Kanit', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090D16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1F293D;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00E5FF;
+    }
+
+    /* Custom Range Slider Styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      background: transparent;
+    }
+    input[type=range]:focus {
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 6px;
+      cursor: pointer;
+      background: #1E293B;
+      border-radius: 9999px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      background: #00E5FF;
+      cursor: pointer;
+      -webkit-appearance: none;
+      margin-top: -6px;
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+      transition: all 0.15s ease;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+      box-shadow: 0 0 15px rgba(0, 229, 255, 0.8);
+    }
+
+    /* Pulse Glow */
+    .glow-btn {
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    }
+    .glow-btn:hover {
+      box-shadow: 0 0 28px rgba(99, 102, 241, 0.7);
+    }
+  </style>
+</head>
+<body class="bg-appBg text-gray-200 font-sans min-h-screen py-6 px-4 md:px-8 flex justify-center items-start">
+
+  <div class="w-full max-w-3xl space-y-5">
+    
+    <!-- Toast Notification Box -->
+    <div id="toast" class="fixed top-5 right-5 z-50 transform translate-y-[-150%] transition-transform duration-300 bg-cardBg border border-cyan-500/30 text-cyan-400 px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-3">
+      <i class="fa-solid fa-circle-info text-lg"></i>
+      <span id="toast-msg">ข้อความแจ้งเตือน</span>
+    </div>
+
+    <!-- HEADER / IMPORT SECTION -->
+    <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
+      <label class="block text-sm font-medium text-gray-300">นำเข้าเสียงจาก YouTube</label>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input type="text" id="youtube-url" placeholder="วางลิงก์ YouTube เช่น https://www.youtube.com/watch?v=..." 
+               class="flex-1 bg-inputBg border border-cardBorder rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-400 text-gray-200 placeholder-gray-500 transition-all">
+        <button id="btn-fetch-yt" class="bg-[#1E293B] hover:bg-slate-700 text-cyan-400 font-medium px-6 py-3 rounded-xl text-sm transition-all flex items-center justify-center space-x-2 border border-cyan-500/20 active:scale-95">
+          <i class="fa-solid fa-download"></i>
+          <span>ดึงข้อมูลเสียง</span>
+        </button>
+      </div>
+
+      <div class="relative flex py-2 items-center">
+        <div class="flex-grow border-t border-cardBorder"></div>
+        <span class="flex-shrink mx-4 text-xs text-gray-500 uppercase tracking-widest">หรือ</span>
+        <div class="flex-grow border-t border-cardBorder"></div>
+      </div>
+
+      <!-- FILE UPLOAD DROPZONE -->
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-2">อัปโหลดไฟล์จากเครื่อง (MP3, WAV, OGG, M4A)</label>
+        <div id="drop-zone" class="border-2 border-dashed border-cardBorder hover:border-cyan-400/50 bg-inputBg/50 hover:bg-inputBg rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center group">
+          <input type="file" id="audio-file-input" accept="audio/*" class="hidden">
+          <i class="fa-solid fa-cloud-arrow-up text-3xl text-cyan-400/70 group-hover:text-cyan-400 mb-2 transition-transform group-hover:-translate-y-1"></i>
+          <p class="text-sm text-gray-300">คลิกเพื่อเลือกไฟล์ หรือลากไฟล์เสียงมาวางที่นี่</p>
+          <p id="file-name-display" class="text-xs text-cyan-400 mt-2 font-mono hidden"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- WAVEFORM & AUDIO PLAYER CARD -->
+    <div class="bg-cardBg border border-cardBorder rounded-2xl p-4 md:p-5 shadow-xl space-y-3">
+      <!-- Controls Top Row -->
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center space-x-2">
+          <!-- Play / Pause Button -->
+          <button id="btn-play" class="w-10 h-10 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-95 disabled:opacity-50">
+            <i class="fa-solid fa-play text-sm"></i>
+          </button>
+          <!-- Stop Button -->
+          <button id="btn-stop" class="w-10 h-10 bg-inputBg hover:bg-slate-700 text-gray-300 rounded-xl flex items-center justify-center transition-all border border-cardBorder active:scale-95">
+            <i class="fa-solid fa-square text-xs"></i>
+          </button>
+          <!-- Loop Toggle Button -->
+          <button id="btn-loop" class="w-10 h-10 bg-inputBg hover:bg-slate-700 text-gray-400 hover:text-cyan-400 rounded-xl flex items-center justify-center transition-all border border-cardBorder active:scale-95" title="เล่นวนซ้ำ">
+            <i class="fa-solid fa-rotate-right text-xs"></i>
+          </button>
+        </div>
+
+        <!-- Timer Display -->
+        <div class="bg-inputBg border border-cardBorder px-4 py-2 rounded-xl font-mono text-cyan-400 text-sm tracking-wider shadow-inner">
+          <span id="time-current">00:00.00</span> / <span id="time-total" class="text-gray-500">00:00.00</span>
+        </div>
+      </div>
+
+      <!-- Waveform Canvas -->
+      <div class="relative w-full h-32 bg-[#0B0E17] rounded-xl overflow-hidden border border-cardBorder/60 cursor-pointer" id="waveform-container">
+        <canvas id="waveform-canvas" class="w-full h-full block"></canvas>
+        <div id="loading-overlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden">
+          <div class="flex items-center space-x-3 text-cyan-400">
+            <i class="fa-solid fa-circle-notch fa-spin text-xl"></i>
+            <span class="text-sm font-medium">กำลังถอดรหัสไฟล์เสียง...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIO CONTROLS & ADJUSTMENTS CARD -->
+    <!-- Card 1: Gain & Normalization -->
+    <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl space-y-4">
+      <div class="flex justify-between items-center">
+        <label class="text-sm font-medium text-gray-200">เพิ่มความดัง / ระดับเสียง (Gain)</label>
+        <span id="gain-val" class="font-mono text-sm text-cyan-400">0.0 dB</span>
+      </div>
+      <input type="range" id="slider-gain" min="-18" max="18" step="0.5" value="0">
+      <div class="flex justify-between text-[11px] font-mono text-gray-500">
+        <span>-18dB</span>
+        <span>0dB (Orig)</span>
+        <span>+18dB (Boost)</span>
+      </div>
+
+      <div class="pt-2 border-t border-cardBorder/60 flex items-center justify-between">
+        <div class="flex items-center space-x-3 cursor-pointer select-none" id="toggle-normalize-container">
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="toggle-normalize" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+          </label>
+          <span class="text-xs text-gray-300">Normalize Loudness (ปรับความดังสม่ำเสมอ -14 LUFS)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: Speed & Pitch -->
+    <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl space-y-5">
+      <!-- Speed Slider -->
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <label class="text-sm font-medium text-gray-200">ความเร็วเสียง (Speed)</label>
+          <span id="speed-val" class="font-mono text-sm text-cyan-400">1.00x</span>
+        </div>
+        <input type="range" id="slider-speed" min="0.5" max="2.0" step="0.05" value="1.0">
+        <div class="flex justify-between text-[11px] font-mono text-gray-500">
+          <span>0.5x</span>
+          <span>1.0x (ปกติ)</span>
+          <span>2.0x</span>
+        </div>
+      </div>
+
+      <!-- Pitch Shift Slider -->
+      <div class="space-y-2 pt-2 border-t border-cardBorder/60">
+        <div class="flex justify-between items-center">
+          <label class="text-sm font-medium text-gray-200">ระดับเสียงทุ้ม-แหลม (Pitch Shift)</label>
+          <span id="pitch-val" class="font-mono text-sm text-cyan-400">0 st</span>
+        </div>
+        <input type="range" id="slider-pitch" min="-12" max="12" step="1" value="0">
+        <div class="flex justify-between text-[11px] font-mono text-gray-500">
+          <span>-12 st</span>
+          <span>0 (มาตรฐาน)</span>
+          <span>+12 st</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3: Equalizer (Bass & Treble) -->
+    <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl space-y-5">
+      <!-- Bass Boost Slider -->
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <label class="text-sm font-medium text-gray-200">Equalizer: เบสทุ้ม (Bass Boost)</label>
+          <span id="bass-val" class="font-mono text-sm text-cyan-400">0.0 dB</span>
+        </div>
+        <input type="range" id="slider-bass" min="0" max="15" step="0.5" value="0">
+        <div class="flex justify-between text-[11px] font-mono text-gray-500">
+          <span>0dB</span>
+          <span>+7.5dB</span>
+          <span>+15dB</span>
+        </div>
+      </div>
+
+      <!-- Treble Boost Slider -->
+      <div class="space-y-2 pt-2 border-t border-cardBorder/60">
+        <div class="flex justify-between items-center">
+          <label class="text-sm font-medium text-gray-200">Equalizer: เสียงแหลม (Treble Boost)</label>
+          <span id="treble-val" class="font-mono text-sm text-cyan-400">0.0 dB</span>
+        </div>
+        <input type="range" id="slider-treble" min="0" max="12" step="0.5" value="0">
+        <div class="flex justify-between text-[11px] font-mono text-gray-500">
+          <span>0dB</span>
+          <span>+6dB</span>
+          <span>+12dB</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPORT OPTIONS & MAIN PROCESS BUTTON CARD -->
+    <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl space-y-5">
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-3">รูปแบบไฟล์ปลายทาง:</label>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <!-- Option 1: OGG Vorbis -->
+          <button data-format="ogg" class="export-opt-btn bg-inputBg border-2 border-indigo-500/80 text-cyan-400 p-3 rounded-xl text-xs font-medium text-left transition-all relative overflow-hidden flex flex-col justify-center">
+            <span class="font-semibold text-sm text-white">OGG Vorbis</span>
+            <span class="text-[10px] text-gray-400">Roblox Native, สูงสุด Quality 10, 48kHz</span>
+          </button>
+          
+          <!-- Option 2: MP3 -->
+          <button data-format="mp3" class="export-opt-btn bg-inputBg border border-cardBorder text-gray-400 p-3 rounded-xl text-xs font-medium text-left hover:border-indigo-500/50 transition-all flex flex-col justify-center">
+            <span class="font-semibold text-sm text-gray-200">MP3</span>
+            <span class="text-[10px] text-gray-400">320kbps</span>
+          </button>
+
+          <!-- Option 3: WAV -->
+          <button data-format="wav" class="export-opt-btn bg-inputBg border border-cardBorder text-gray-400 p-3 rounded-xl text-xs font-medium text-left hover:border-indigo-500/50 transition-all flex flex-col justify-center">
+            <span class="font-semibold text-sm text-gray-200">WAV</span>
+            <span class="text-[10px] text-gray-400">16-bit PCM</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Process & Export Action Button -->
+      <button id="btn-export" class="w-full bg-accentPurple hover:bg-accentPurpleHover text-white font-medium py-3.5 px-6 rounded-xl text-base transition-all glow-btn flex items-center justify-center space-x-2 active:scale-[0.99]">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        <span>ประมวลผลและส่งออกไฟล์เสียง</span>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    // System State Variables
+    let audioCtx = null;
+    let audioBuffer = null;
+    let audioSourceNode = null;
+    let gainNode = null;
+    let bassNode = null;
+    let trebleNode = null;
+
+    let isPlaying = false;
+    let isLooping = false;
+    let startTime = 0;
+    let pauseOffset = 0;
+    let timerAnimation = null;
+    let selectedFormat = 'ogg';
+
+    // DOM Elements
+    const fileInput = document.getElementById('audio-file-input');
+    const dropZone = document.getElementById('drop-zone');
+    const fileNameDisplay = document.getElementById('file-name-display');
+    const btnFetchYt = document.getElementById('btn-fetch-yt');
+    const ytUrlInput = document.getElementById('youtube-url');
+
+    const btnPlay = document.getElementById('btn-play');
+    const btnStop = document.getElementById('btn-stop');
+    const btnLoop = document.getElementById('btn-loop');
+    const timeCurrent = document.getElementById('time-current');
+    const timeTotal = document.getElementById('time-total');
+    
+    const canvas = document.getElementById('waveform-canvas');
+    const canvasCtx = canvas.getContext('2d');
+    const waveformContainer = document.getElementById('waveform-container');
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    // Controls
+    const sliderGain = document.getElementById('slider-gain');
+    const gainVal = document.getElementById('gain-val');
+    const toggleNormalize = document.getElementById('toggle-normalize');
+    
+    const sliderSpeed = document.getElementById('slider-speed');
+    const speedVal = document.getElementById('speed-val');
+    
+    const sliderPitch = document.getElementById('slider-pitch');
+    const pitchVal = document.getElementById('pitch-val');
+
+    const sliderBass = document.getElementById('slider-bass');
+    const bassVal = document.getElementById('bass-val');
+
+    const sliderTreble = document.getElementById('slider-treble');
+    const trebleVal = document.getElementById('treble-val');
+
+    const exportOptionBtns = document.querySelectorAll('.export-opt-btn');
+    const btnExport = document.getElementById('btn-export');
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toast-msg');
+
+    // Toast helper
+    function showToast(message) {
+      toastMsg.textContent = message;
+      toast.classList.remove('translate-y-[-150%]');
+      setTimeout(() => {
+        toast.classList.add('translate-y-[-150%]');
+      }, 3500);
+    }
+
+    // Initialize Web Audio API Context
+    function initAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Setup Drag and Drop
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-cyan-400');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-cyan-400');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-cyan-400');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+
+    // YouTube Fetch Mock Action
+    btnFetchYt.addEventListener('click', () => {
+      const url = ytUrlInput.value.trim();
+      if (!url) {
+        showToast('กรุณากรอกลิงก์ YouTube ที่ต้องการดึงข้อมูล');
+        return;
+      }
+      showToast('กำลังจำลองการดึงไฟล์เสียงจาก YouTube...');
+      // Synthetic Audio Generator for Demonstration
+      initAudioContext();
+      loadingOverlay.classList.remove('hidden');
+      setTimeout(() => {
+        createSyntheticAudioBuffer();
+        fileNameDisplay.textContent = 'YouTube_Audio_Stream.mp3';
+        fileNameDisplay.classList.remove('hidden');
+        loadingOverlay.classList.add('hidden');
+        showToast('ดึงข้อมูลเสียงสำเร็จ!');
+      }, 1500);
+    });
+
+    // Handle File Selection
+    function handleFileSelect(file) {
+      initAudioContext();
+      fileNameDisplay.textContent = file.name;
+      fileNameDisplay.classList.remove('hidden');
+      loadingOverlay.classList.remove('hidden');
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const arrayBuffer = e.target.result;
+        audioCtx.decodeAudioData(arrayBuffer, (decodedData) => {
+          audioBuffer = decodedData;
+          pauseOffset = 0;
+          isPlaying = false;
+          updatePlayButton();
+          updateTimeDisplay(0, audioBuffer.duration);
+          drawWaveform();
+          loadingOverlay.classList.add('hidden');
+          showToast('โหลดไฟล์เสียงเรียบร้อยแล้ว');
+        }, (err) => {
+          loadingOverlay.classList.add('hidden');
+          showToast('ไม่สามารถอ่านไฟล์เสียงนี้ได้');
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // Create Synthetic Audio Buffer for YouTube Mocking
+    function createSyntheticAudioBuffer() {
+      const sampleRate = audioCtx.sampleRate;
+      const duration = 12; // 12 seconds preview audio
+      const numSamples = sampleRate * duration;
+      const buffer = audioCtx.createBuffer(2, numSamples, sampleRate);
+      
+      for (let channel = 0; channel < 2; channel++) {
+        const data = buffer.getChannelData(channel);
+        for (let i = 0; i < numSamples; i++) {
+          const t = i / sampleRate;
+          // Harmonic wave simulation
+          data[i] = Math.sin(2 * Math.PI * 220 * t) * 0.3 * Math.exp(-t * 0.1)
+                  + Math.sin(2 * Math.PI * 440 * t) * 0.2
+                  + (Math.random() - 0.5) * 0.05;
+        }
+      }
+      audioBuffer = buffer;
+      pauseOffset = 0;
+      updatePlayButton();
+      updateTimeDisplay(0, audioBuffer.duration);
+      drawWaveform();
+    }
+
+    // Draw Audio Waveform on Canvas
+    function drawWaveform() {
+      const width = canvas.width = waveformContainer.clientWidth;
+      const height = canvas.height = waveformContainer.clientHeight;
+
+      canvasCtx.clearRect(0, 0, width, height);
+
+      if (!audioBuffer) {
+        // Draw empty grid
+        canvasCtx.strokeStyle = '#1E293B';
+        canvasCtx.lineWidth = 1;
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(0, height / 2);
+        canvasCtx.lineTo(width, height / 2);
+        canvasCtx.stroke();
+        return;
+      }
+
+      const data = audioBuffer.getChannelData(0);
+      const step = Math.ceil(data.length / width);
+      const amp = height / 2;
+
+      canvasCtx.fillStyle = '#0B0E17';
+      canvasCtx.fillRect(0, 0, width, height);
+
+      // Draw Wave Bars
+      canvasCtx.fillStyle = '#3B82F6';
+      for (let i = 0; i < width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        for (let j = 0; j < step; j++) {
+          const datum = data[(i * step) + j];
+          if (datum < min) min = datum;
+          if (datum > max) max = datum;
+        }
+        const barHeight = Math.max(2, (max - min) * amp);
+        canvasCtx.fillRect(i, amp - barHeight / 2, 1, barHeight);
+      }
+
+      // Draw Current Progress Playhead
+      if (audioBuffer) {
+        const progress = pauseOffset / audioBuffer.duration;
+        const playheadX = progress * width;
+        canvasCtx.fillStyle = '#00E5FF';
+        canvasCtx.fillRect(playheadX, 0, 2, height);
+      }
+    }
+
+    // Audio Graph Pipeline
+    function startAudioPlayback() {
+      if (!audioBuffer) return;
+      initAudioContext();
+
+      if (audioSourceNode) {
+        audioSourceNode.stop();
+        audioSourceNode.disconnect();
+      }
+
+      // Create Audio Nodes
+      audioSourceNode = audioCtx.createBufferSource();
+      audioSourceNode.buffer = audioBuffer;
+
+      gainNode = audioCtx.createGain();
+      bassNode = audioCtx.createBiquadFilter();
+      trebleNode = audioCtx.createBiquadFilter();
+
+      // Configure Filters
+      bassNode.type = 'lowshelf';
+      bassNode.frequency.value = 250;
+
+      trebleNode.type = 'highshelf';
+      trebleNode.frequency.value = 4000;
+
+      // Apply Realtime Slider Settings
+      applyParamsToNodes();
+
+      // Connect Nodes Graph
+      audioSourceNode.connect(bassNode);
+      bassNode.connect(trebleNode);
+      trebleNode.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      audioSourceNode.loop = isLooping;
+
+      // Calculate Playback Offset
+      if (pauseOffset >= audioBuffer.duration) {
+        pauseOffset = 0;
+      }
+      startTime = audioCtx.currentTime - (pauseOffset / audioSourceNode.playbackRate.value);
+      audioSourceNode.start(0, pauseOffset);
+
+      isPlaying = true;
+      updatePlayButton();
+      trackPlaybackProgress();
+
+      audioSourceNode.onended = () => {
+        if (!isLooping && isPlaying) {
+          isPlaying = false;
+          pauseOffset = 0;
+          updatePlayButton();
+          drawWaveform();
+          updateTimeDisplay(0, audioBuffer.duration);
+        }
+      };
+    }
+
+    function pauseAudioPlayback() {
+      if (audioSourceNode && isPlaying) {
+        audioSourceNode.stop();
+        pauseOffset = (audioCtx.currentTime - startTime) * audioSourceNode.playbackRate.value;
+        isPlaying = false;
+        updatePlayButton();
+        cancelAnimationFrame(timerAnimation);
+      }
+    }
+
+    function stopAudioPlayback() {
+      if (audioSourceNode) {
+        audioSourceNode.stop();
+      }
+      isPlaying = false;
+      pauseOffset = 0;
+      updatePlayButton();
+      cancelAnimationFrame(timerAnimation);
+      drawWaveform();
+      if (audioBuffer) {
+        updateTimeDisplay(0, audioBuffer.duration);
+      }
+    }
+
+    // Dynamic Parameter Sync
+    function applyParamsToNodes() {
+      if (!gainNode) return;
+
+      // Gain (dB conversion)
+      let gainDb = parseFloat(sliderGain.value);
+      if (toggleNormalize.checked) {
+        gainDb += 3.0; // Simulated LUFS target adjustment
+      }
+      gainNode.gain.value = Math.pow(10, gainDb / 20);
+
+      // Speed & Pitch
+      const speed = parseFloat(sliderSpeed.value);
+      const semitones = parseFloat(sliderPitch.value);
+      // Pitch Shift factor calculation: 2^(st/12)
+      const pitchRatio = Math.pow(2, semitones / 12);
+      
+      if (audioSourceNode) {
+        audioSourceNode.playbackRate.value = speed * pitchRatio;
+      }
+
+      // EQ
+      bassNode.gain.value = parseFloat(sliderBass.value);
+      trebleNode.gain.value = parseFloat(sliderTreble.value);
+    }
+
+    // Playback Progress Tracker
+    function trackPlaybackProgress() {
+      if (!isPlaying || !audioBuffer) return;
+
+      const currentPosition = (audioCtx.currentTime - startTime) * (audioSourceNode ? audioSourceNode.playbackRate.value : 1.0);
+      pauseOffset = currentPosition % audioBuffer.duration;
+
+      updateTimeDisplay(pauseOffset, audioBuffer.duration);
+      drawWaveform();
+
+      timerAnimation = requestAnimationFrame(trackPlaybackProgress);
+    }
+
+    // Format Seconds to MM:SS.ms
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      const ms = Math.floor((seconds % 1) * 100);
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+    }
+
+    function updateTimeDisplay(current, total) {
+      timeCurrent.textContent = formatTime(current || 0);
+      timeTotal.textContent = formatTime(total || 0);
+    }
+
+    function updatePlayButton() {
+      btnPlay.innerHTML = isPlaying ? '<i class="fa-solid fa-pause text-sm"></i>' : '<i class="fa-solid fa-play text-sm"></i>';
+    }
+
+    // Waveform Click to Seek
+    waveformContainer.addEventListener('click', (e) => {
+      if (!audioBuffer) return;
+      const rect = waveformContainer.getBoundingClientRect();
+      const clickRatio = (e.clientX - rect.left) / rect.width;
+      pauseOffset = clickRatio * audioBuffer.duration;
+
+      if (isPlaying) {
+        startAudioPlayback();
+      } else {
+        drawWaveform();
+        updateTimeDisplay(pauseOffset, audioBuffer.duration);
+      }
+    });
+
+    // Control Listeners
+    btnPlay.addEventListener('click', () => {
+      if (!audioBuffer) {
+        showToast('กรุณาอัปโหลดไฟล์เสียงก่อน');
+        return;
+      }
+      if (isPlaying) {
+        pauseAudioPlayback();
+      } else {
+        startAudioPlayback();
+      }
+    });
+
+    btnStop.addEventListener('click', stopAudioPlayback);
+
+    btnLoop.addEventListener('click', () => {
+      isLooping = !isLooping;
+      btnLoop.classList.toggle('text-cyan-400', isLooping);
+      btnLoop.classList.toggle('border-cyan-500/50', isLooping);
+      if (audioSourceNode) {
+        audioSourceNode.loop = isLooping;
+      }
+      showToast(isLooping ? 'เปิดการเล่นวนซ้ำ (Loop On)' : 'ปิดการเล่นวนซ้ำ (Loop Off)');
+    });
+
+    // Slider Updates
+    sliderGain.addEventListener('input', (e) => {
+      gainVal.textContent = `${parseFloat(e.target.value).toFixed(1)} dB`;
+      applyParamsToNodes();
+    });
+
+    toggleNormalize.addEventListener('change', () => {
+      applyParamsToNodes();
+      showToast(toggleNormalize.checked ? 'เปิดใช้งาน Normalize Loudness (-14 LUFS)' : 'ปิดใช้งาน Normalize Loudness');
+    });
+
+    sliderSpeed.addEventListener('input', (e) => {
+      speedVal.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
+      applyParamsToNodes();
+    });
+
+    sliderPitch.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      pitchVal.textContent = `${val > 0 ? '+' : ''}${val} st`;
+      applyParamsToNodes();
+    });
+
+    sliderBass.addEventListener('input', (e) => {
+      bassVal.textContent = `${parseFloat(e.target.value).toFixed(1)} dB`;
+      applyParamsToNodes();
+    });
+
+    sliderTreble.addEventListener('input', (e) => {
+      trebleVal.textContent = `${parseFloat(e.target.value).toFixed(1)} dB`;
+      applyParamsToNodes();
+    });
+
+    // Export Format Selector
+    exportOptionBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        exportOptionBtns.forEach(b => {
+          b.classList.remove('border-2', 'border-indigo-500/80', 'text-cyan-400');
+          b.classList.add('border', 'border-cardBorder', 'text-gray-400');
+          const title = b.querySelector('span:first-child');
+          if (title) title.className = 'font-semibold text-sm text-gray-200';
+        });
+
+        btn.classList.remove('border', 'border-cardBorder', 'text-gray-400');
+        btn.classList.add('border-2', 'border-indigo-500/80', 'text-cyan-400');
+        const title = btn.querySelector('span:first-child');
+        if (title) title.className = 'font-semibold text-sm text-white';
+
+        selectedFormat = btn.getAttribute('data-format');
+      });
+    });
+
+    // Export Audio Logic (Offline Audio Context Processing)
+    btnExport.addEventListener('click', async () => {
+      if (!audioBuffer) {
+        showToast('กรุณาเลือกไฟล์เสียงก่อนเริ่มการส่งออก');
+        return;
+      }
+
+      showToast('กำลังประมวลผลไฟล์เสียง...');
+      btnExport.disabled = true;
+      btnExport.classList.add('opacity-50');
+
+      try {
+        const speed = parseFloat(sliderSpeed.value);
+        const pitchRatio = Math.pow(2, parseFloat(sliderPitch.value) / 12);
+        const effectiveRate = speed * pitchRatio;
+
+        const renderDuration = audioBuffer.duration / effectiveRate;
+        const sampleRate = selectedFormat === 'ogg' ? 48000 : audioBuffer.sampleRate;
+        
+        // Create Offline Audio Context for Fast Rendering
+        const offlineCtx = new OfflineAudioContext(
+          audioBuffer.numberOfChannels,
+          Math.ceil(sampleRate * renderDuration),
+          sampleRate
+        );
+
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.playbackRate.value = effectiveRate;
+
+        const gNode = offlineCtx.createGain();
+        let gainDb = parseFloat(sliderGain.value);
+        if (toggleNormalize.checked) gainDb += 3.0;
+        gNode.gain.value = Math.pow(10, gainDb / 20);
+
+        const bNode = offlineCtx.createBiquadFilter();
+        bNode.type = 'lowshelf';
+        bNode.frequency.value = 250;
+        bNode.gain.value = parseFloat(sliderBass.value);
+
+        const tNode = offlineCtx.createBiquadFilter();
+        tNode.type = 'highshelf';
+        tNode.frequency.value = 4000;
+        tNode.gain.value = parseFloat(sliderTreble.value);
+
+        // Connect offline pipeline
+        source.connect(bNode);
+        bNode.connect(tNode);
+        tNode.connect(gNode);
+        gNode.connect(offlineCtx.destination);
+
+        source.start(0);
+
+        const renderedBuffer = await offlineCtx.startRendering();
+
+        // Encode to WAV Blob
+        const wavBlob = audioBufferToWavBlob(renderedBuffer);
+
+        // Download File
+        const url = URL.createObjectURL(wavBlob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `processed_audio_${Date.now()}.${selectedFormat === 'ogg' ? 'ogg' : selectedFormat === 'mp3' ? 'mp3' : 'wav'}`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        }, 100);
+
+        showToast(`ส่งออกไฟล์เสียงสำเร็จ (${selectedFormat.toUpperCase()})!`);
+      } catch (err) {
+        console.error(err);
+        showToast('เกิดข้อผิดพลาดในการส่งออกไฟล์');
+      } finally {
+        btnExport.disabled = false;
+        btnExport.classList.remove('opacity-50');
+      }
+    });
+
+    // Convert AudioBuffer to WAV File Blob Helper
+    function audioBufferToWavBlob(buffer) {
+      const numChannels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const format = 1; // PCM
+      const bitDepth = 16;
+
+      let result;
+      if (numChannels === 2) {
+        result = interleave(buffer.getChannelData(0), buffer.getChannelData(1));
+      } else {
+        result = buffer.getChannelData(0);
+      }
+
+      const dataLength = result.length * (bitDepth / 8);
+      const bufferLength = 44 + dataLength;
+      const out = new DataView(new ArrayBuffer(bufferLength));
+
+      // RIFF chunk descriptor
+      writeString(out, 0, 'RIFF');
+      out.setUint32(4, 36 + dataLength, true);
+      writeString(out, 8, 'WAVE');
+      // FMT sub-chunk
+      writeString(out, 12, 'fmt ');
+      out.setUint32(16, 16, true);
+      out.setUint16(20, format, true);
+      out.setUint16(22, numChannels, true);
+      out.setUint32(24, sampleRate, true);
+      out.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true);
+      out.setUint16(32, numChannels * (bitDepth / 8), true);
+      out.setUint16(34, bitDepth, true);
+      // Data sub-chunk
+      writeString(out, 36, 'data');
+      out.setUint32(40, dataLength, true);
+
+      // Write PCM Samples
+      let offset = 44;
+      for (let i = 0; i < result.length; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, result[i]));
+        out.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      }
+
+      return new Blob([out], { type: 'audio/wav' });
+    }
+
+    function interleave(inputL, inputR) {
+      const length = inputL.length + inputR.length;
+      const result = new Float32Array(length);
+      let index = 0;
+      let inputIndex = 0;
+
+      while (index < length) {
+        result[index++] = inputL[inputIndex];
+        result[index++] = inputR[inputIndex];
+        inputIndex++;
+      }
+      return result;
+    }
+
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    // Initial canvas setup
+    window.addEventListener('resize', drawWaveform);
+    drawWaveform();
+  </script>
+</body>
+</html>
